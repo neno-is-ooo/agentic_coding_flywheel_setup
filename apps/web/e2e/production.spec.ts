@@ -4,7 +4,7 @@ import { test, expect, type Page } from "@playwright/test";
  * Production smoke tests that run against the live site.
  * These are critical for catching deployment issues.
  *
- * Run with: PLAYWRIGHT_BASE_URL=https://agent-flywheel.com npx playwright test production
+ * Run with: cd apps/web && PLAYWRIGHT_BASE_URL=https://agent-flywheel.com bun run test production
  */
 
 type ErrorCollector = {
@@ -44,6 +44,13 @@ function setupErrorMonitoring(page: Page): ErrorCollector {
   return collector;
 }
 
+async function waitForPageSettled(page: Page): Promise<void> {
+  await page.waitForLoadState("domcontentloaded");
+  // Some pages may keep background requests open (analytics, etc). Avoid flakiness by
+  // attempting networkidle but not failing the test if it never becomes fully idle.
+  await page.waitForLoadState("networkidle", { timeout: 5000 }).catch(() => {});
+}
+
 test.describe("Production Smoke Tests", () => {
   test.skip(
     !process.env.PLAYWRIGHT_BASE_URL?.includes("agent-flywheel.com"),
@@ -54,7 +61,7 @@ test.describe("Production Smoke Tests", () => {
     const { jsErrors, failedRequests } = setupErrorMonitoring(page);
 
     await page.goto("/");
-    await page.waitForLoadState("networkidle");
+    await waitForPageSettled(page);
 
     await expect(page.locator("h1").first()).toBeVisible();
     expect(failedRequests).toEqual([]);
@@ -65,7 +72,7 @@ test.describe("Production Smoke Tests", () => {
     const { jsErrors, failedRequests } = setupErrorMonitoring(page);
 
     await page.goto("/learn");
-    await page.waitForLoadState("networkidle");
+    await waitForPageSettled(page);
 
     await expect(page.locator("h1").first()).toBeVisible();
     expect(failedRequests).toEqual([]);
@@ -76,7 +83,7 @@ test.describe("Production Smoke Tests", () => {
     const { jsErrors, failedRequests } = setupErrorMonitoring(page);
 
     await page.goto("/learn/welcome");
-    await page.waitForLoadState("networkidle");
+    await waitForPageSettled(page);
 
     await expect(page.locator("h1").first()).toBeVisible();
     expect(failedRequests).toEqual([]);
@@ -87,7 +94,7 @@ test.describe("Production Smoke Tests", () => {
     const { jsErrors, failedRequests } = setupErrorMonitoring(page);
 
     await page.goto("/learn/commands");
-    await page.waitForLoadState("networkidle");
+    await waitForPageSettled(page);
 
     await expect(page.locator("h1").first()).toBeVisible();
     expect(failedRequests).toEqual([]);
@@ -98,7 +105,7 @@ test.describe("Production Smoke Tests", () => {
     const { jsErrors, failedRequests } = setupErrorMonitoring(page);
 
     await page.goto("/wizard/os-selection");
-    await page.waitForLoadState("networkidle");
+    await waitForPageSettled(page);
 
     await expect(page.locator("h1").first()).toBeVisible();
     expect(failedRequests).toEqual([]);

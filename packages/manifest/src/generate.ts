@@ -13,7 +13,7 @@ import { writeFileSync, mkdirSync, readFileSync, existsSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parse as parseYaml } from 'yaml';
-import { parseManifestFile } from './parser.js';
+import { parseManifestFile, validateManifest } from './parser.js';
 import {
   getCategories,
   getModuleCategory,
@@ -980,6 +980,27 @@ async function main(): Promise<void> {
   const manifest = result.data;
   console.log(`Parsed ${manifest.modules.length} modules`);
 
+  // Preflight: validate dependency graph invariants (missing deps, cycles, phase ordering).
+  // The Zod schema guarantees shape, but not relational correctness.
+  const validation = validateManifest(manifest);
+  if (!validation.valid) {
+    console.error('');
+    console.error(`Manifest validation failed with ${validation.errors.length} error(s):`);
+    for (const err of validation.errors) {
+      console.error(`- ${err.path}: ${err.message}`);
+    }
+    console.error('');
+    process.exit(1);
+  }
+  if (validation.warnings.length > 0) {
+    console.error('');
+    console.error(`Manifest validation warnings (${validation.warnings.length}):`);
+    for (const warn of validation.warnings) {
+      console.error(`- ${warn.path}: ${warn.message}`);
+    }
+    console.error('');
+  }
+
   const categories = getCategories(manifest);
   console.log(`Categories: ${categories.join(', ')}`);
   console.log('');
@@ -1024,6 +1045,7 @@ async function main(): Promise<void> {
   // --validate mode: validation already passed, print success and exit
   if (validateOnly) {
     console.log('✓ Manifest schema valid');
+    console.log('✓ Manifest dependency graph valid');
     console.log('✓ Checksums.yaml coverage complete');
     console.log('');
     console.log('Validation passed.');

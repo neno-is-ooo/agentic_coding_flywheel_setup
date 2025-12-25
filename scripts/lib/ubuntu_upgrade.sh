@@ -1321,18 +1321,64 @@ ubuntu_confirm_upgrade() {
 # ============================================================
 
 # Retry a command with exponential backoff
-# Usage: ubuntu_retry_with_backoff <command> [max_retries] [initial_delay]
+# Usage:
+#   ubuntu_retry_with_backoff [max_retries] [initial_delay] -- command [args...]
+# Legacy (string) signature:
+#   ubuntu_retry_with_backoff "<command string>" [max_retries] [initial_delay]
 ubuntu_retry_with_backoff() {
-    local cmd="$1"
-    local max_retries="${2:-5}"
-    local delay="${3:-30}"
+    local max_retries=5
+    local delay=30
 
-    for i in $(seq 1 "$max_retries"); do
-        if eval "$cmd"; then
+    if [[ $# -eq 0 ]]; then
+        log_error "ubuntu_retry_with_backoff: Missing command"
+        return 2
+    fi
+
+    # Legacy signature: ubuntu_retry_with_backoff "<command string>" [max_retries] [initial_delay]
+    if [[ $# -eq 1 ]] || [[ $# -eq 2 && "${2:-}" =~ ^[0-9]+$ ]] || [[ $# -eq 3 && "${2:-}" =~ ^[0-9]+$ && "${3:-}" =~ ^[0-9]+$ ]]; then
+        local cmd="$1"
+        max_retries="${2:-5}"
+        delay="${3:-30}"
+
+        local attempt
+        for ((attempt = 1; attempt <= max_retries; attempt++)); do
+            if bash -c "$cmd"; then
+                return 0
+            fi
+
+            log_warn "Attempt ${attempt} failed, retrying in ${delay}s..."
+            sleep "$delay"
+            delay=$((delay * 2))  # Exponential backoff
+        done
+
+        log_error "Command failed after $max_retries attempts"
+        return 1
+    fi
+
+    # New signature: ubuntu_retry_with_backoff [max_retries] [initial_delay] -- command [args...]
+    if [[ "${1:-}" =~ ^[0-9]+$ ]]; then
+        max_retries="$1"
+        shift
+    fi
+    if [[ "${1:-}" =~ ^[0-9]+$ ]]; then
+        delay="$1"
+        shift
+    fi
+    if [[ "${1:-}" == "--" ]]; then
+        shift
+    fi
+    if [[ $# -eq 0 ]]; then
+        log_error "ubuntu_retry_with_backoff: Missing command"
+        return 2
+    fi
+
+    local attempt
+    for ((attempt = 1; attempt <= max_retries; attempt++)); do
+        if "$@"; then
             return 0
         fi
 
-        log_warn "Attempt $i failed, retrying in ${delay}s..."
+        log_warn "Attempt ${attempt} failed, retrying in ${delay}s..."
         sleep "$delay"
         delay=$((delay * 2))  # Exponential backoff
     done
